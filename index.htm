@@ -39,23 +39,62 @@
         #map { height: 100vh; width: 100%; border-radius: 0px; z-index: 1; }
         .map-header-container {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; min-width: 320px; text-align: center;
+            z-index: 1000; width: 92%; max-width: 600px; display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
-        .map-info-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .map-info-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
         .map-info {
             background: rgba(255, 255, 255, 0.95); padding: 8px 20px;
             border-radius: 20px; font-size: 14px; color: #2c3e50;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2); border: 1px solid #e67e22;
-            cursor: pointer; min-width: 180px; font-weight: 500;
+            cursor: pointer; min-width: 180px; font-weight: 500; text-align: center;
         }
         .search-icon-btn {
             background: #1414b8; width: 36px; height: 36px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            border: 2px solid white; transition: all 0.2s ease;
+            border: 2px solid white; transition: all 0.2s ease; flex-shrink: 0;
         }
         .search-icon-btn:hover { background: #e67e22; transform: scale(1.1); }
         .search-icon-btn svg { width: 20px; height: 20px; fill: white; }
+
+        /* Google Maps Style Search Bar Widget */
+        .gmaps-search-box-wrapper {
+            position: relative; width: 100%; max-width: 480px; z-index: 1001;
+        }
+        .gmaps-search-input-container {
+            display: flex; align-items: center; background: white;
+            border-radius: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+            padding: 2px 8px 2px 16px; border: 1px solid #dfe1e5;
+            transition: box-shadow 0.2s ease;
+        }
+        .gmaps-search-input-container:focus-within {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.35); border-color: #1414b8;
+        }
+        .gmaps-search-input {
+            flex-grow: 1; border: none; outline: none; font-size: 14px; color: #202124;
+            padding: 8px 0; background: transparent; font-family: 'Inter', sans-serif;
+        }
+        .gmaps-search-action-btn {
+            background: none; border: none; cursor: pointer; color: #5f6368;
+            padding: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; border-radius: 50%; transition: background 0.2s;
+        }
+        .gmaps-search-action-btn:hover { background: #f1f3f4; color: #202124; }
+        
+        /* Autocomplete Suggestions Dropdown */
+        .gmaps-suggestions {
+            position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+            background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            max-height: 280px; overflow-y: auto; display: none; z-index: 1002;
+            border: 1px solid #e0e0e0; padding: 6px 0;
+        }
+        .gmaps-suggestion-item {
+            padding: 10px 16px; display: flex; align-items: center; gap: 12px;
+            cursor: pointer; font-size: 13px; color: #3c4043; transition: background 0.15s;
+        }
+        .gmaps-suggestion-item:hover { background: #f8f9fa; }
+        .gmaps-suggestion-item i { color: #5f6368; font-size: 14px; width: 16px; text-align: center; }
+        .gmaps-suggestion-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* Popups & Modals */
         .filter-popup {
@@ -136,7 +175,7 @@
         @keyframes fadeIn { from {opacity: 0; transform: translateX(-50%) translateY(10px);} to {opacity: 1; transform: translateX(-50%) translateY(0);} }
 
         @media (max-width: 600px) {
-            .map-header-container { width: 92%; }
+            .map-header-container { width: 95%; top: 10px; }
             .col-alamat { display: none !important; }
             .col-mp { width: 45px; }
             .modal-content { width: 98%; margin: 2% auto; max-height: 95vh; }
@@ -164,8 +203,18 @@
 
     <div id="panel-mapping" class="relative w-full h-screen overflow-hidden">
         
-        <!-- Top Bar Ringkasan -->
+        <!-- Top Bar Ringkasan & Google Maps Style Search Bar -->
         <div class="map-header-container">
+            <!-- Google Maps Style Search Bar with Autocomplete -->
+            <div class="gmaps-search-box-wrapper" id="gmapsSearchWrapper">
+                <div class="gmaps-search-input-container">
+                    <button class="gmaps-search-action-btn" title="Cari Lokasi"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    <input type="text" id="gmapsSearchInput" class="gmaps-search-input" placeholder="Cari ..." autocomplete="off">
+                    <button id="gmapsClearBtn" class="gmaps-search-action-btn" title="Hapus" style="display: none;" onclick="clearGmapsSearch()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div id="gmapsSuggestions" class="gmaps-suggestions"></div>
+            </div>
+
             <div class="map-info-wrapper">
                 <div id="info-summary" class="map-info" onclick="openDataModal()">Loading ...</div>
                 <div class="search-icon-btn" onclick="openDataModal()" title="Cari & Filter Detail">
@@ -234,10 +283,10 @@
         var map = L.map('map', { zoomControl: false }).setView([-2.5, 118.0], 5);
         L.control.zoom({ position: 'topright' }).addTo(map);
         
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
-}).addTo(map);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+        }).addTo(map);
 
         // Icon Pin Marker Peta Custom
         var jsmuIcon = L.icon({
@@ -246,6 +295,9 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_M
             iconAnchor: [16, 32], 
             popupAnchor: [0, -25]
         });
+
+        // Marker khusus untuk hasil pencarian Google Maps-style
+        var searchResultMarker = null;
 
         let masterMapData = [];
         let activeMarkers = [];
@@ -409,7 +461,7 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_M
                 activeMarkers.push(m);
             }
 
-            if (hasValidCoords && activeMarkers.length > 0) {
+            if (hasValidCoords && activeMarkers.length > 0 && !searchResultMarker) {
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
             }
         }
@@ -498,7 +550,108 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_M
         function closeDataModal() { document.getElementById('detailModal').style.display = "none"; }
         function closeFilterPopup() { document.getElementById('filterPopup').style.display = "none"; }
         
-        map.on('click', () => closeFilterPopup());
+        map.on('click', () => {
+            closeFilterPopup();
+            document.getElementById('gmapsSuggestions').style.display = 'none';
+        });
+
+        // --- GOOGLE MAPS STYLE SEARCH & AUTOCOMPLETE LOGIC (NOMINATIM API) ---
+        const gmapsInput = document.getElementById('gmapsSearchInput');
+        const gmapsClearBtn = document.getElementById('gmapsClearBtn');
+        const gmapsSuggestions = document.getElementById('gmapsSuggestions');
+        let searchTimeout = null;
+
+        gmapsInput.addEventListener('input', function() {
+            let query = this.value.trim();
+            if (query.length > 0) {
+                gmapsClearBtn.style.display = 'block';
+            } else {
+                gmapsClearBtn.style.display = 'none';
+                gmapsSuggestions.style.display = 'none';
+                return;
+            }
+
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=id&limit=5`)
+                    .then(response => response.json())
+                    .then(data => {
+                        displaySuggestions(data);
+                    })
+                    .catch(err => console.error("Autocomplete error:", err));
+            }, 350);
+        });
+
+        gmapsInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                let query = this.value.trim();
+                if (query) {
+                    gmapsSuggestions.style.display = 'none';
+                    performDirectSearch(query);
+                }
+            }
+        });
+
+        function displaySuggestions(places) {
+            gmapsSuggestions.innerHTML = '';
+            if (!places || places.length === 0) {
+                gmapsSuggestions.style.display = 'none';
+                return;
+            }
+
+            places.forEach(place => {
+                let item = document.createElement('div');
+                item.className = 'gmaps-suggestion-item';
+                item.innerHTML = `
+                    <i class="fa-solid fa-location-dot"></i>
+                    <div class="gmaps-suggestion-text" title="${place.display_name}">${place.display_name}</div>
+                `;
+                item.addEventListener('click', () => {
+                    gmapsInput.value = place.display_name;
+                    gmapsSuggestions.style.display = 'none';
+                    panToLocation(parseFloat(place.lat), parseFloat(place.lon), place.display_name);
+                });
+                gmapsSuggestions.appendChild(item);
+            });
+            gmapsSuggestions.style.display = 'block';
+        }
+
+        function performDirectSearch(query) {
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=id&limit=1`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        let place = data[0];
+                        panToLocation(parseFloat(place.lat), parseFloat(place.lon), place.display_name);
+                    } else {
+                        alert("Lokasi tidak ditemukan. Coba kata kunci lain.");
+                    }
+                })
+                .catch(err => console.error("Search error:", err));
+        }
+
+        function panToLocation(lat, lng, displayName) {
+            map.setView([lat, lng], 15);
+
+            if (searchResultMarker) {
+                map.removeLayer(searchResultMarker);
+            }
+
+            searchResultMarker = L.marker([lat, lng]).addTo(map)
+                .bindPopup(`<div style="font-family: 'Inter', sans-serif; font-weight: 500; font-size: 13px;">${displayName}</div>`, { offset: L.point(0, -10) })
+                .openPopup();
+        }
+
+        function clearGmapsSearch() {
+            gmapsInput.value = '';
+            gmapsClearBtn.style.display = 'none';
+            gmapsSuggestions.style.display = 'none';
+            if (searchResultMarker) {
+                map.removeLayer(searchResultMarker);
+                searchResultMarker = null;
+            }
+            applyFilter(); // Reset to fit filtered active data bounds
+        }
     </script>
 </body> 
 </html>
